@@ -1,0 +1,69 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import yfinance as yf
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import LSTM, Dense
+
+# Step 1: Data Collection
+# Fetch historical stock price data from Yahoo Finance
+stock_data = yf.download('AAPL', start='2010-01-01', end='2022-01-01', progress=False)
+
+# Step 2: Data Preprocessing
+# Keep only 'Close' column and convert DataFrame to numpy array
+data = stock_data['Close'].values.reshape(-1, 1)
+
+# Scale the data
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled_data = scaler.fit_transform(data)
+
+# Split the data into training and testing sets
+training_size = int(len(scaled_data) * 0.8)
+training_data = scaled_data[:training_size]
+test_data = scaled_data[training_size:]
+
+# Function to create dataset with lookback
+def create_dataset(dataset, lookback):
+    X, y = [], []
+    for i in range(len(dataset) - lookback):
+        X.append(dataset[i:(i + lookback), 0])
+        y.append(dataset[i + lookback, 0])
+    return np.array(X), np.array(y)
+
+# Define lookback period
+lookback = 60
+
+# Create training and testing datasets
+X_train, y_train = create_dataset(training_data, lookback)
+X_test, y_test = create_dataset(test_data, lookback)
+
+# Reshape input data to be 3-dimensional in the form [samples, timesteps, features]
+X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+
+# Step 3: Building the LSTM Model
+model = Sequential()
+model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+model.add(LSTM(units=50, return_sequences=False))
+model.add(Dense(units=1))
+
+# Compile the model
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+# Step 4: Training the Model
+model.fit(X_train, y_train, batch_size=32, epochs=100)
+
+# Step 5: Evaluation
+predicted_stock_price = model.predict(X_test)
+predicted_stock_price = scaler.inverse_transform(predicted_stock_price)  # Inverse scaling
+
+# Step 6: Visualization
+plt.figure(figsize=(12, 6))
+plt.plot(scaler.inverse_transform(test_data[lookback:]), color='blue', label='Actual Stock Price')
+plt.plot(predicted_stock_price, color='red', label='Predicted Stock Price')
+plt.title('Apple Inc. Stock Price Prediction')
+plt.xlabel('Time')
+plt.ylabel('Stock Price')
+plt.legend()
+plt.show()
